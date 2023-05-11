@@ -1,0 +1,23 @@
+result_name: silver_assignments
+result_bucket: internalforecast-data-silver
+saving_option: latest_and_historic
+create_bigquery_table: 'TRUE'
+bigquery_dataset_name: internal_forecast_silver
+data_sources:
+- data_source_bucket: internalforecast-data-bronze
+  data_source_path_and_name: bronze_activityAssignment/latest/data.parquet
+- data_source_bucket: internalforecast-data-bronze
+  data_source_path_and_name: bronze_deliveryGroup/latest/data.parquet
+- data_source_bucket: internalforecast-data-bronze
+  data_source_path_and_name: bronze_account/latest/data.parquet
+duckdb_query: | 
+            SELECT
+                  aa.id as assignment_id
+                , dg.id as delivery_group
+                , dg.contract_cost as delivery_contract_cost
+                , a.id as account_id
+            FROM read_parquet('/tmp/bronze_activityAssignment/latest/data.parquet') aa
+            LEFT JOIN read_parquet('/tmp/bronze_deliveryGroup/latest/data.parquet') dg
+                ON aa.delivery_group_id = dg.id AND aa.request_ts = dg.request_ts
+            LEFT JOIN read_parquet('/tmp/bronze_account/latest/data.parquet') a
+                ON dg.account_id = a.id AND dg.request_ts = a.request_ts

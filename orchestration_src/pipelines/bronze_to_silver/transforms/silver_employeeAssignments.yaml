@@ -1,0 +1,90 @@
+result_name: silver_employeeAssignments
+result_bucket: internalforecast-data-silver
+saving_option: latest_and_historic
+create_bigquery_table: 'TRUE'
+bigquery_dataset_name: internal_forecast_silver
+data_sources:
+- data_source_bucket: internalforecast-data-bronze
+  data_source_path_and_name: bronze_activityAssignment/latest/data.parquet
+- data_source_bucket: internalforecast-data-bronze
+  data_source_path_and_name: bronze_resourcedActivity/latest/data.parquet
+- data_source_bucket: internalforecast-data-bronze
+  data_source_path_and_name: bronze_deliveryElement/latest/data.parquet
+- data_source_bucket: internalforecast-data-bronze
+  data_source_path_and_name: bronze_deliveryGroup/latest/data.parquet
+- data_source_bucket: internalforecast-data-bronze
+  data_source_path_and_name: bronze_referenceData/latest/data.parquet
+duckdb_query: | 
+            WITH             
+              employee_data as (
+                select aa.id as assignment_id
+                    , aa.created_dt
+                    , aa.last_modified_dt
+                    , aa.employee_id
+                    , aa.assignment_role
+                    , aa.assignment_start_dt
+                    , case 
+                        when aa.p1_end_dt is null and aa.p2_end_dt is not null
+                            then aa.p2_end_dt
+                        when aa.p1_end_dt is null and aa.p2_end_dt is null
+                            then aa.p3_end_dt 
+                        else aa.p1_end_dt
+                    end as assignment_end_dt
+                    , aa.is_capability_chalet
+                    , aa.utilisation_percentage
+                    , aa.assignment_demand_id
+                    , aa.resourced_activity_operated_id
+                    , aa.probability_code
+                from read_parquet('/tmp/bronze_activityAssignment/latest/data.parquet') aa
+              )
+              ,sorted_data AS (
+                SELECT *,
+                      ROW_NUMBER() OVER (PARTITION BY employee_id, assignment_id ORDER BY last_modified_dt DESC) AS row_num
+                FROM employee_data
+              ),
+              latest_assignments AS (
+                SELECT *
+                FROM sorted_data
+                WHERE row_num = 1
+              ),
+              dates_and_weeks AS (
+                SELECT 
+                      la.employee_id
+                    , la.assignment_id
+                    , la.assignment_role
+                    , la.created_dt
+                    , la.last_modified_dt
+                    , la.assignment_start_dt AS start_date
+                    , year(la.assignment_start_dt) AS start_yr
+                    , week(la.assignment_start_dt) AS start_wk
+                    , la.assignment_end_dt AS end_date
+                    , year(la.assignment_end_dt) AS end_yr
+                    , week(la.assignment_end_dt) AS end_wk
+                    , EXTRACT(YEAR FROM la.assignment_start_dt) * 100 + EXTRACT(WEEK FROM la.assignment_start_dt) AS start_yr_wk
+                    , EXTRACT(YEAR FROM la.assignment_end_dt) * 100 + EXTRACT(WEEK FROM la.assignment_end_dt) AS end_yr_wk
+                    , CAST(la.utilisation_percentage AS INTEGER) AS utilisation_percentage
+                    , la.is_capability_chalet
+                    , la.assignment_demand_id
+                    , ra.id as resourced_activity_id
+                    , de.id as delivery_element_id
+                    , de.Name as delivery_element_name
+                    , de.delivery_group_id
+                    , dg.name as delivery_group_name
+                    , de.element_start_dt as element_expected_start_dt
+                    , de.element_end_dt as element_expected_end_dt
+                    , rd.description as probability_desc
+                    , rd.enum as probability_enum
+                    , rd.is_active as probability_is_active
+                FROM latest_assignments la
+                LEFT JOIN read_parquet('/tmp/bronze_resourcedActivity/latest/data.parquet') ra
+                    ON la.resourced_activity_operated_id = ra.id
+                LEFT JOIN read_parquet('/tmp/bronze_deliveryElement/latest/data.parquet') de
+                    on ra.delivery_element_id = de.id
+                LEFT JOIN read_parquet('/tmp/bronze_deliveryGroup/latest/data.parquet') dg
+                    ON de.delivery_group_id = dg.id
+                LEFT JOIN read_parquet('/tmp/bronze_referenceData/latest/data.parquet') rd
+                    ON la.probability_code = rd.id
+                WHERE ra.delivery_element_id IS NOT NULL
+              )
+            SELECT *
+            FROM dates_and_weeks

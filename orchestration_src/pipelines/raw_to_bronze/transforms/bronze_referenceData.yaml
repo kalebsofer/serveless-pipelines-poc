@@ -1,0 +1,19 @@
+result_name: bronze_referenceData
+result_bucket: internalforecast-data-bronze
+saving_option: latest_and_historic
+create_bigquery_table: 'TRUE'
+bigquery_dataset_name: internal_forecast_bronze
+data_sources:
+- data_source_bucket: internalforecast-data-raw
+  data_source_path_and_name: KimbleOne__ReferenceData__c/latest/data.jsonl  
+duckdb_query: | 
+            SELECT
+                  Id as id
+                , Name as name
+                , KimbleOne__Description__c as description
+                , KimbleOne__Domain__c as domain
+                , KimbleOne__Enum__c as enum
+                , KimbleOne__IsActive__c as is_active
+                , LastModifiedDate as last_modified_dt
+                , current_timestamp as request_ts
+            FROM read_json_auto('/tmp/KimbleOne__ReferenceData__c/latest/data.jsonl', auto_detect=true, maximum_object_size = 100000000)

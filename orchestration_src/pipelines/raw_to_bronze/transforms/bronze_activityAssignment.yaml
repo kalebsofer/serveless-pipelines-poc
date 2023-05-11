@@ -1,0 +1,45 @@
+result_name: bronze_activityAssignment
+result_bucket: internalforecast-data-bronze
+saving_option: latest_and_historic
+create_bigquery_table: 'TRUE'
+bigquery_dataset_name: internal_forecast_bronze
+data_sources:
+- data_source_bucket: internalforecast-data-raw
+  data_source_path_and_name: KimbleOne__ActivityAssignment__c/latest/data.jsonl
+duckdb_query: | 
+            SELECT 
+                 Id as id
+                , CreatedDate as created_dt
+                , LastModifiedDate as last_modified_dt
+                , KimbleOne__Resource__c as employee_id
+                , KimbleOne__ActivityAssignmentDemand__c as assignment_demand_id
+                , KimbleOne__DeliveryGroup__c as delivery_group_id
+                , KimbleOne__ActivityRole__c as assignment_role
+                , KimbleOne__StartDate__c as assignment_start_dt
+                , KimbleOne__ForecastP1EndDate__c as p1_end_dt
+                , KimbleOne__ForecastP2EndDate__c as p2_end_dt
+                , KimbleOne__ForecastP3EndDate__c as p3_end_dt
+                , KimbleOne__ResourcedActivityInvoicedWith__c as resourced_activity_invoiced_id
+                , KimbleOne__ResourcedActivityOperatedWith__c as resourced_activity_operated_id
+                , IQ_IsCapabilityChalet__c as is_capability_chalet
+                , KimbleOne__ProbabilityCode__c as probability_code
+                , KimbleOne__UtilisationPercentage__c as utilisation_percentage  
+                , current_timestamp as request_ts
+            FROM read_json(['/tmp/KimbleOne__ActivityAssignment__c/latest/data.jsonl'], 
+            columns={Id: 'VARCHAR(18)',
+              CreatedDate: 'VARCHAR(18)',
+              LastModifiedDate: 'VARCHAR(18)',
+              KimbleOne__Resource__c: 'VARCHAR(18)',
+              KimbleOne__ActivityAssignmentDemand__c: 'VARCHAR(18)',
+              KimbleOne__DeliveryGroup__c: 'VARCHAR(18)',
+              KimbleOne__ActivityRole__c: 'VARCHAR(255)',
+              KimbleOne__StartDate__c: 'DATE',
+              KimbleOne__ForecastP1EndDate__c: 'DATE',
+              KimbleOne__ForecastP2EndDate__c: 'DATE',
+              KimbleOne__ForecastP3EndDate__c: 'DATE',
+              KimbleOne__ResourcedActivityInvoicedWith__c: 'VARCHAR(18)',
+              KimbleOne__ResourcedActivityOperatedWith__c: 'VARCHAR(18)',
+              IQ_IsCapabilityChalet__c: BOOLEAN,
+              KimbleOne__ProbabilityCode__c: 'VARCHAR(255)',
+              KimbleOne__UtilisationPercentage__c: 'FLOAT',
+              request_ts: 'TIMESTAMP WITH TIME ZONE'}) 

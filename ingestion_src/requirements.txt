@@ -1,0 +1,4 @@
+functions-framework==3.3.0
+google-api-python-client==2.86.0
+simple_salesforce==1.12.3
+google-cloud-storage==2.8.0

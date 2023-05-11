@@ -1,0 +1,19 @@
+result_name: bronze_deliveryElement
+result_bucket: internalforecast-data-bronze
+saving_option: latest_and_historic
+create_bigquery_table: 'TRUE'
+bigquery_dataset_name: internal_forecast_bronze
+data_sources:
+- data_source_bucket: internalforecast-data-raw
+  data_source_path_and_name: KimbleOne__DeliveryElement__c/latest/data.jsonl
+duckdb_query: | 
+            SELECT
+                    Id as id
+                    , Name as name
+                    , KimbleOne__DeliveryGroup__c as delivery_group_id
+                    , KimbleOne__BaselinedDate__c as element_start_dt
+                    , KimbleOne__EndDate__c as element_end_dt
+                    , KimbleOne__ExpectedContractCost__c as expected_element_cost
+                    , KimbleOne__ExpectedContractRevenue__c as expected_element_revenue
+                    , current_timestamp as request_ts
+                FROM read_json_auto('/tmp/KimbleOne__DeliveryElement__c/latest/data.jsonl', auto_detect=true, maximum_object_size = 100000000) 

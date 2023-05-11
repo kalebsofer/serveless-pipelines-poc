@@ -1,0 +1,8 @@
+*.DS_Store
+*/*.DS_Store
+.env
+terraform/.terraform
+terraform/tmp
+*__pycache__
+orchestration_src/local_dev.env
+tools/prefect_container_for_UI/shared_home/.prefect/*

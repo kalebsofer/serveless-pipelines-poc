@@ -1,0 +1,68 @@
+result_name: gold_probability
+result_bucket: internalforecast-data-gold
+saving_option: latest_and_historic
+create_bigquery_table: 'TRUE'
+bigquery_dataset_name: internal_forecast_gold
+data_sources:
+- data_source_bucket: internalforecast-data-silver
+  data_source_path_and_name: silver_employeeAssignments/latest/data.parquet
+- data_source_bucket: internalforecast-data-silver
+  data_source_path_and_name: silver_activeEmployeeWeek/latest/data.parquet
+duckdb_query: | 
+            WITH 
+              RECURSIVE expand_weeks AS (
+                  SELECT 
+                      employee_id, 
+                      delivery_group_name, 
+                      start_yr, 
+                      start_wk, 
+                      end_yr, 
+                      end_wk, 
+                      utilisation_percentage, 
+                      probability_desc,
+                      probability_enum
+                  FROM read_parquet('/tmp/silver_employeeAssignments/latest/data.parquet')
+                  UNION ALL
+                  SELECT 
+                      employee_id, 
+                      delivery_group_name, 
+                      CASE WHEN start_wk = 52 THEN start_yr + 1 ELSE start_yr END, 
+                      CASE WHEN start_wk = 52 THEN 1 ELSE start_wk + 1 END, 
+                      end_yr, end_wk, utilisation_percentage, 
+                      probability_desc, probability_enum
+                  FROM expand_weeks
+                  WHERE (start_yr, start_wk) < (end_yr, end_wk)
+              ),
+              yr_weeks AS (
+                  SELECT 
+                      employee_id, 
+                      delivery_group_name, 
+                      start_yr AS year, 
+                      start_wk AS week, 
+                      utilisation_percentage, 
+                      probability_desc, 
+                      probability_enum
+                  FROM expand_weeks
+              ),
+              merged AS (
+                  SELECT 
+                      aew.employee_id, 
+                      aew.year, 
+                      aew.week,
+                      CONCAT(aew.year, '-', aew.week) AS yr_week,
+                      CASE 
+                          WHEN yw.delivery_group_name IS null 
+                              THEN 'Chalet - Derived'
+                          ELSE yw.delivery_group_name
+                      END AS delivery_group_name,
+                      COALESCE(yw.utilisation_percentage, 100) AS utilisation_percentage,
+                      yw.probability_desc, 
+                      yw.probability_enum
+                  FROM read_parquet('/tmp/silver_activeEmployeeWeek/latest/data.parquet') AS aew
+                  LEFT JOIN yr_weeks yw
+                      ON aew.employee_id = yw.employee_id 
+                      AND aew.year = yw.year 
+                      AND aew.week = yw.week
+              )
+            SELECT * 
+            FROM merged

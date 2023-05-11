@@ -1,0 +1,37 @@
+result_name: silver_activeEmployeeWeek
+result_bucket: internalforecast-data-silver
+saving_option: latest_and_historic
+create_bigquery_table: 'TRUE'
+bigquery_dataset_name: internal_forecast_silver
+data_sources:
+- data_source_bucket: internalforecast-data-bronze
+  data_source_path_and_name: bronze_employee/latest/data.parquet
+duckdb_query: | 
+            WITH 
+              RECURSIVE date_series(date) AS (
+                  SELECT MIN(start_dt) 
+                  FROM read_parquet('/tmp/bronze_employee/latest/data.parquet') 
+                  
+                  UNION ALL
+                  
+                  SELECT date + INTERVAL '1 week' 
+                  FROM date_series 
+                  WHERE date < CURRENT_DATE + INTERVAL '5 years'
+              ),
+              active_dates AS (
+                  SELECT
+                      id AS employee_id,
+                      date_series.date,
+                      EXTRACT(YEAR FROM date_series.date) AS year,
+                      EXTRACT(WEEK FROM date_series.date) AS week
+                  FROM read_parquet('/tmp/bronze_employee/latest/data.parquet') e
+                  JOIN date_series
+                  ON date_series.date >= e.start_dt
+                  AND (date_series.date <= e.end_dt OR e.end_dt IS NULL)
+              )
+            SELECT DISTINCT
+                employee_id,
+                year,
+                week
+            FROM active_dates
+            ORDER BY employee_id, year, week

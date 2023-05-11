@@ -1,0 +1,61 @@
+result_name: gold_p2_employeeAssignment
+result_bucket: internalforecast-data-gold
+saving_option: latest_and_historic
+create_bigquery_table: 'TRUE'
+bigquery_dataset_name: internal_forecast_gold
+data_sources:
+- data_source_bucket: internalforecast-data-gold
+  data_source_path_and_name: gold_probability/latest/data.parquet
+- data_source_bucket: internalforecast-data-silver
+  data_source_path_and_name: silver_employee/latest/data.parquet
+duckdb_query: | 
+            WITH probability as (
+                SELECT *
+                FROM read_parquet('/tmp/gold_probability/latest/data.parquet')
+                WHERE (probability_enum IS NULL OR probability_enum NOT IN ('P0','P3'))
+            ), 
+            sum_util AS (
+                SELECT 
+                    employee_id, year, week, yr_week, 
+                    SUM(utilisation_percentage) AS sum_util_percentage
+                FROM probability
+                GROUP BY employee_id, year, week, yr_week
+            ),
+            merged_with_sum AS (
+                SELECT 
+                    m.*, 
+                    s.sum_util_percentage
+                FROM probability AS m
+                JOIN sum_util AS s 
+                    ON m.employee_id = s.employee_id 
+                    AND m.year = s.year 
+                    AND m.week = s.week
+            ),
+            util_adjusted AS (
+                SELECT employee_id, delivery_group_name, year, week, yr_week,
+                    CASE
+                        WHEN sum_util_percentage > 100 
+                            THEN utilisation_percentage * 100 / sum_util_percentage
+                        ELSE utilisation_percentage
+                    END AS util_adjusted
+                FROM merged_with_sum
+            ),
+            additional_rows AS (
+                SELECT employee_id, 'Chalet - Derived' AS delivery_group_name, year, week, yr_week, 100 - sum_util_percentage AS util_adjusted
+                FROM sum_util
+                WHERE sum_util_percentage < 100
+            ),
+            assignments AS (
+            SELECT * FROM util_adjusted
+            UNION ALL
+            SELECT * FROM additional_rows
+            )
+            SELECT 
+                a.employee_id, a.delivery_group_name, a.year, a.week, a.util_adjusted,
+                emp.emp_type, emp.capability, emp.sfia_level, emp.role, emp.start_dt,
+                emp.start_yr, emp.start_wk, emp.end_dt, emp.end_yr, emp.end_wk
+            FROM assignments a
+            JOIN read_parquet('/tmp/silver_employee/latest/data.parquet') emp
+                ON a.employee_id = emp.id
+            WHERE emp.emp_type IN ('Employee UK', 'Contractor', 'Partner Agency Team')
+            ORDER BY a.employee_id, a.year, a.week

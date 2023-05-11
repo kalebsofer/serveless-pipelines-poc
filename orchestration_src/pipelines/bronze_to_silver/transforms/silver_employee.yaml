@@ -1,0 +1,35 @@
+result_name: silver_employee
+result_bucket: internalforecast-data-silver
+saving_option: latest_and_historic
+create_bigquery_table: 'TRUE'
+bigquery_dataset_name: internal_forecast_silver
+data_sources:
+- data_source_bucket: internalforecast-data-bronze
+  data_source_path_and_name: bronze_employee/latest/data.parquet  
+- data_source_bucket: internalforecast-data-bronze
+  data_source_path_and_name: bronze_businessUnit/latest/data.parquet  
+- data_source_bucket: internalforecast-data-bronze
+  data_source_path_and_name: bronze_resourceType/latest/data.parquet 
+duckdb_query: | 
+            SELECT  
+                e.id
+              , rt.resource_type as emp_type
+              , replace(bu.capability, '#', '') as capability
+              , e.sfia_level
+              , replace(replace(e.role, '_', ' '), '#', '') as role
+              , e.location
+              , e.start_dt
+              , e.start_yr
+              , e.start_wk
+              , e.end_dt
+              , e.end_yr
+              , e.end_wk
+              , e.std_cost
+              , e.std_revenue
+              , e.request_ts
+            FROM read_parquet('/tmp/bronze_employee/latest/data.parquet') e
+            LEFT JOIN read_parquet('/tmp/bronze_businessUnit/latest/data.parquet') bu
+                ON e.capability = bu.id
+            LEFT JOIN read_parquet('/tmp/bronze_resourceType/latest/data.parquet') rt
+                ON e.emp_type = rt.id
+            WHERE rt.resource_type NOT IN ('z - Generic Resource: to archive','Generic Resource UK')
